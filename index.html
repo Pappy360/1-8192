@@ -31,7 +31,7 @@
       background: #fff;
       padding: 10px;
       border: 1px solid #ccc;
-      width: 300px;
+      width: 350px;
     }
   </style>
 </head>
@@ -71,9 +71,14 @@
     const manualBtn = document.getElementById("manualClick");
     const autoBtn = document.getElementById("autoClick");
 
-    // Function to update probability
+    // Function to calculate SPA for a given attempt
+    function calculateSPA(attempts) {
+      return 1 - Math.pow(1 - shinyChance, attempts);
+    }
+
+    // Function to update overall probability display
     function updateProbability() {
-      const chance = 1 - Math.pow(1 - shinyChance, attempts);
+      const chance = calculateSPA(attempts);
       prob.textContent = `Chance to have found at least 1 shiny: ${(chance*100).toFixed(2)}%`;
     }
 
@@ -82,32 +87,11 @@
       attempts++;
       if (Math.random() < shinyChance) {
         shinies++;
+        const spa = calculateSPA(attempts) * 100;
+
         log.textContent = `✨ Shiny Found! Total Shinies: ${shinies} ✨`;
 
+        // Add shiny + SPA to log
         const li = document.createElement("li");
-        li.textContent = `Shiny #${shinies} found at attempt ${attempts}`;
-        shinyLog.appendChild(li);
-        shinyLog.scrollTop = shinyLog.scrollHeight;
-      }
-      stats.innerHTML = `Attempts: ${attempts}<br>Shinies Found: ${shinies}`;
-      updateProbability();
-    }
-
-    manualBtn.addEventListener("click", clickAttempt);
-
-    autoBtn.addEventListener("click", () => {
-      if (!autoClicking) {
-        autoClicking = true;
-        autoBtn.textContent = "Stop Auto-Click (100/sec)";
-        autoClickInterval = setInterval(clickAttempt, 10); // 100 clicks/sec
-      } else {
-        autoClicking = false;
-        autoBtn.textContent = "Start Auto-Click (100/sec)";
-        clearInterval(autoClickInterval);
-      }
-    });
-
-  </script>
-
-</body>
-</html>
+        li.textContent = `Shiny #${shinies} found at attempt ${attempts} — SPA: ${spa.toFixed(2)}%`;
+        shinyLog.appendChi
