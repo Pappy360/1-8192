@@ -26,12 +26,12 @@
     }
 
     #shinyList {
-      max-height: 200px;
+      max-height: 250px;
       overflow-y: auto;
       background: #fff;
       padding: 10px;
       border: 1px solid #ccc;
-      width: 350px;
+      width: 500px;
     }
 
     #modifiers label {
@@ -47,6 +47,12 @@
       50% { background-color: gold; }
       100% { background-color: #f0f0f0; }
     }
+
+    .rarest {
+      background: black;
+      color: white;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
@@ -55,6 +61,8 @@
 
   <button id="manualClick">Manual Click</button>
   <button id="autoClick">Start Auto-Click (100/sec)</button>
+  <button id="sortSPA">Sort Shiny Log by SPA ↓</button>
+  <button id="reset">Reset All</button>
 
   <div id="modifiers">
     <label>
@@ -79,11 +87,12 @@
 
   <script>
     const baseChance = 1 / 8192;
-    let attempts = 0;           // total attempts
-    let shinies = 0;            // total shinies
-    let spaAttempts = 0;        // attempts since last shiny
+    let attempts = 0;
+    let shinies = 0;
+    let spaAttempts = 0;
     let autoClicking = false;
     let autoClickInterval;
+    let maxRV = 0;
 
     const log = document.getElementById("log");
     const stats = document.getElementById("stats");
@@ -92,37 +101,63 @@
     const manualBtn = document.getElementById("manualClick");
     const autoBtn = document.getElementById("autoClick");
     const shinyCharmCheckbox = document.getElementById("shinyCharm");
+    const sortSPAButton = document.getElementById("sortSPA");
+    const resetButton = document.getElementById("reset");
 
-    // Flash screen when shiny
     function flashScreen() {
       document.body.classList.add("flash");
       setTimeout(() => document.body.classList.remove("flash"), 300);
     }
 
-    // Calculate SPA since last shiny
-    function calculateSPA() {
-      const chance = getCurrentChance();
-      return 1 - Math.pow(1 - chance, spaAttempts);
-    }
-
-    // Get current shiny chance considering Shiny Charm
     function getCurrentChance() {
       let chance = baseChance;
       if (shinyCharmCheckbox.checked) chance *= 3;
       return chance;
     }
 
-    // Update stats and probability display
+    function calculateSPA() {
+      const chance = getCurrentChance();
+      return 1 - Math.pow(1 - chance, spaAttempts);
+    }
+
+    function cumulativeChance() {
+      const chance = getCurrentChance();
+      return 1 - Math.pow(1 - chance, attempts);
+    }
+
     function updateStats() {
       stats.innerHTML = `
         Attempts: ${attempts}<br>
         Shinies Found: ${shinies}<br>
-        SPA Since Last Shiny: ${(calculateSPA()*100).toFixed(2)}%
+        SPA Since Last Shiny: ${(calculateSPA()*100).toFixed(2)}%<br>
+        Cumulative Chance: ${(cumulativeChance()*100).toFixed(2)}%
       `;
-      prob.textContent = `Chance to have found at least 1 shiny: ${(calculateSPA()*100).toFixed(2)}%`;
+      prob.textContent = `Chance to have found at least 1 shiny: ${(cumulativeChance()*100).toFixed(2)}%`;
     }
 
-    // Single click attempt
+    function getRandomPokedexNumber() {
+      return Math.floor(Math.random() * 898) + 1;
+    }
+
+    function addShinyToLog(pokemonNumber, spa, rv, save=true) {
+      const li = document.createElement("li");
+      li.dataset.spa = spa;
+      li.dataset.rv = rv;
+      li.textContent = `Shiny #${shinies} - Pokédex #${pokemonNumber} — SPA: ${spa.toFixed(2)}% — RV: ${rv.toFixed(3)}`;
+
+      // Update rarest highlight
+      if (rv > maxRV) {
+        maxRV = rv;
+        shinyLog.querySelectorAll(".rarest").forEach(el => el.classList.remove("rarest"));
+        li.classList.add("rarest");
+      }
+
+      shinyLog.appendChild(li);
+      shinyLog.scrollTop = shinyLog.scrollHeight;
+
+      if(save) saveToLocalStorage();
+    }
+
     function clickAttempt() {
       attempts++;
       spaAttempts++;
@@ -131,21 +166,18 @@
       if (Math.random() < chance) {
         shinies++;
         const spa = calculateSPA()*100;
+        const pokemonNumber = getRandomPokedexNumber();
+        const rv = Math.random();
 
         log.textContent = `✨ Shiny Found! Total Shinies: ${shinies} ✨`;
         flashScreen();
+        addShinyToLog(pokemonNumber, spa, rv);
 
-        // Add shiny to log
-        const li = document.createElement("li");
-        li.textContent = `Shiny #${shinies} at attempt ${attempts} — SPA: ${spa.toFixed(2)}%`;
-        shinyLog.appendChild(li);
-        shinyLog.scrollTop = shinyLog.scrollHeight;
-
-        // Reset SPA counter
         spaAttempts = 0;
       }
 
       updateStats();
+      saveToLocalStorage();
     }
 
     manualBtn.addEventListener("click", clickAttempt);
@@ -161,6 +193,66 @@
         clearInterval(autoClickInterval);
       }
     });
+
+    sortSPAButton.addEventListener("click", () => {
+      const items = Array.from(shinyLog.querySelectorAll("li"));
+      items.sort((a, b) => parseFloat(b.dataset.spa) - parseFloat(a.dataset.spa));
+      shinyLog.innerHTML = "";
+      items.forEach(item => shinyLog.appendChild(item));
+    });
+
+    resetButton.addEventListener("click", () => {
+      if(confirm("Are you sure you want to reset all progress?")) {
+        attempts = 0;
+        shinies = 0;
+        spaAttempts = 0;
+        maxRV = 0;
+        shinyLog.innerHTML = "";
+        updateStats();
+        log.textContent = "Click 'Manual Click' or use Auto-Click!";
+        localStorage.clear();
+      }
+    });
+
+    // Save to localStorage
+    function saveToLocalStorage() {
+      const logData = Array.from(shinyLog.querySelectorAll("li")).map(li => ({
+        text: li.textContent,
+        spa: li.dataset.spa,
+        rv: li.dataset.rv,
+        rare: li.classList.contains("rarest")
+      }));
+      localStorage.setItem("shinyLog", JSON.stringify(logData));
+      localStorage.setItem("shinyStats", JSON.stringify({attempts, shinies, spaAttempts, maxRV}));
+    }
+
+    // Load from localStorage
+    function loadFromLocalStorage() {
+      const statsData = JSON.parse(localStorage.getItem("shinyStats"));
+      const logData = JSON.parse(localStorage.getItem("shinyLog"));
+
+      if(statsData) {
+        attempts = statsData.attempts;
+        shinies = statsData.shinies;
+        spaAttempts = statsData.spaAttempts;
+        maxRV = statsData.maxRV;
+        updateStats();
+      }
+
+      if(logData) {
+        logData.forEach(item => {
+          const li = document.createElement("li");
+          li.textContent = item.text;
+          li.dataset.spa = item.spa;
+          li.dataset.rv = item.rv;
+          if(item.rare) li.classList.add("rarest");
+          shinyLog.appendChild(li);
+        });
+      }
+    }
+
+    // Initialize
+    loadFromLocalStorage();
   </script>
 
 </body>
