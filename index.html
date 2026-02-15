@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Shiny Hunting Simulator</title>
+  <style>
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      flex-direction: column;
+      font-family: sans-serif;
+      background: #f0f0f0;
+      padding: 20px;
+    }
+
+    button {
+      margin-top: 10px;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    #stats, #log, #shinyList {
+      margin-top: 15px;
+      font-size: 16px;
+    }
+
+    #shinyList {
+      max-height: 200px;
+      overflow-y: auto;
+      background: #fff;
+      padding: 10px;
+      border: 1px solid #ccc;
+      width: 300px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="log">Click "Manual Click" or use Auto-Click!</div>
+
+  <button id="manualClick">Manual Click</button>
+  <button id="autoClick">Start Auto-Click (100/sec)</button>
+
+  <div id="stats">
+    Attempts: 0<br>
+    Shinies Found: 0
+  </div>
+
+  <div id="shinyList">
+    <strong>Shiny Log:</strong>
+    <ul id="shinyLog"></ul>
+  </div>
+
+  <script>
+    const shinyChance = 1 / 8192;
+
+    let attempts = 0;
+    let shinies = 0;
+    let autoClicking = false;
+    let autoClickInterval;
+
+    const log = document.getElementById("log");
+    const stats = document.getElementById("stats");
+    const shinyLog = document.getElementById("shinyLog");
+    const manualBtn = document.getElementById("manualClick");
+    const autoBtn = document.getElementById("autoClick");
+
+    function clickAttempt() {
+      attempts++;
+      if (Math.random() < shinyChance) {
+        shinies++;
+        log.textContent = `✨ Shiny Found! Total Shinies: ${shinies} ✨`;
+
+        const li = document.createElement("li");
+        li.textContent = `Shiny #${shinies} found at attempt ${attempts}`;
+        shinyLog.appendChild(li);
+        shinyLog.scrollTop = shinyLog.scrollHeight;
+      }
+      stats.innerHTML = `Attempts: ${attempts}<br>Shinies Found: ${shinies}`;
+    }
+
+    manualBtn.addEventListener("click", clickAttempt);
+
+    autoBtn.addEventListener("click", () => {
+      if (!autoClicking) {
+        autoClicking = true;
+        autoBtn.textContent = "Stop Auto-Click (100/sec)";
+        autoClickInterval = setInterval(clickAttempt, 10); // 100 clicks/sec
+      } else {
+        autoClicking = false;
+        autoBtn.textContent = "Start Auto-Click (100/sec)";
+        clearInterval(autoClickInterval);
+      }
+    });
+  </script>
+
+</body>
+</html>
