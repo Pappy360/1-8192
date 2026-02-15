@@ -31,7 +31,7 @@
       background: #fff;
       padding: 10px;
       border: 1px solid #ccc;
-      width: 500px;
+      width: 550px;
     }
 
     #modifiers label {
@@ -63,6 +63,9 @@
   <button id="autoClick">Start Auto-Click (100/sec)</button>
   <button id="sortSPA">Sort Shiny Log by SPA ↓</button>
   <button id="reset">Reset All</button>
+  <button id="exportLog">Export Log</button>
+  <button id="importLog">Import Log</button>
+  <input type="file" id="importFile" style="display:none" />
 
   <div id="modifiers">
     <label>
@@ -80,180 +83,223 @@
     Chance to have found at least 1 shiny: 0%
   </div>
 
-  <div id="shinyList">
-    <strong>Shiny Log:</strong>
-    <ul id="shinyLog"></ul>
-  </div>
+<script>
+const baseChance = 1 / 8192;
+let attempts = 0;
+let shinies = 0;
+let spaAttempts = 0;
+let autoClicking = false;
+let autoClickInterval;
+let maxRV = 0;
 
-  <script>
-    const baseChance = 1 / 8192;
-    let attempts = 0;
-    let shinies = 0;
-    let spaAttempts = 0;
-    let autoClicking = false;
-    let autoClickInterval;
-    let maxRV = 0;
+const log = document.getElementById("log");
+const stats = document.getElementById("stats");
+const shinyLog = document.getElementById("shinyLog");
+const prob = document.getElementById("prob");
+const manualBtn = document.getElementById("manualClick");
+const autoBtn = document.getElementById("autoClick");
+const shinyCharmCheckbox = document.getElementById("shinyCharm");
+const sortSPAButton = document.getElementById("sortSPA");
+const resetButton = document.getElementById("reset");
+const exportButton = document.getElementById("exportLog");
+const importButton = document.getElementById("importLog");
+const importFile = document.getElementById("importFile");
 
-    const log = document.getElementById("log");
-    const stats = document.getElementById("stats");
-    const shinyLog = document.getElementById("shinyLog");
-    const prob = document.getElementById("prob");
-    const manualBtn = document.getElementById("manualClick");
-    const autoBtn = document.getElementById("autoClick");
-    const shinyCharmCheckbox = document.getElementById("shinyCharm");
-    const sortSPAButton = document.getElementById("sortSPA");
-    const resetButton = document.getElementById("reset");
+function flashScreen() {
+  document.body.classList.add("flash");
+  setTimeout(() => document.body.classList.remove("flash"), 300);
+}
 
-    function flashScreen() {
-      document.body.classList.add("flash");
-      setTimeout(() => document.body.classList.remove("flash"), 300);
-    }
+function getCurrentChance() {
+  let chance = baseChance;
+  if(shinyCharmCheckbox.checked) chance *= 3;
+  return chance;
+}
 
-    function getCurrentChance() {
-      let chance = baseChance;
-      if (shinyCharmCheckbox.checked) chance *= 3;
-      return chance;
-    }
+function calculateSPA() {
+  const chance = getCurrentChance();
+  return 1 - Math.pow(1 - chance, spaAttempts);
+}
 
-    function calculateSPA() {
-      const chance = getCurrentChance();
-      return 1 - Math.pow(1 - chance, spaAttempts);
-    }
+function cumulativeChance() {
+  const chance = getCurrentChance();
+  return 1 - Math.pow(1 - chance, attempts);
+}
 
-    function cumulativeChance() {
-      const chance = getCurrentChance();
-      return 1 - Math.pow(1 - chance, attempts);
-    }
+function updateStats() {
+  stats.innerHTML = `
+    Attempts: ${attempts}<br>
+    Shinies Found: ${shinies}<br>
+    SPA Since Last Shiny: ${(calculateSPA()*100).toFixed(2)}%<br>
+    Cumulative Chance: ${(cumulativeChance()*100).toFixed(2)}%
+  `;
+  prob.textContent = `Chance to have found at least 1 shiny: ${(cumulativeChance()*100).toFixed(2)}%`;
+}
 
-    function updateStats() {
-      stats.innerHTML = `
-        Attempts: ${attempts}<br>
-        Shinies Found: ${shinies}<br>
-        SPA Since Last Shiny: ${(calculateSPA()*100).toFixed(2)}%<br>
-        Cumulative Chance: ${(cumulativeChance()*100).toFixed(2)}%
-      `;
-      prob.textContent = `Chance to have found at least 1 shiny: ${(cumulativeChance()*100).toFixed(2)}%`;
-    }
+function getRandomPokedexNumber() {
+  return Math.floor(Math.random() * 1025) + 1; // 1–1025
+}
 
-    function getRandomPokedexNumber() {
-      return Math.floor(Math.random() * 898) + 1;
-    }
+function addShinyToLog(pokemonNumber, spa, rv, save=true) {
+  const li = document.createElement("li");
+  li.dataset.spa = spa;
+  li.dataset.rv = rv;
+  li.textContent = `Shiny #${shinies} - Pokédex #${pokemonNumber} — SPA: ${(spa*100).toFixed(2)}% — RV: ${rv.toFixed(3)}`;
 
-    function addShinyToLog(pokemonNumber, spa, rv, save=true) {
-      const li = document.createElement("li");
-      li.dataset.spa = spa;
-      li.dataset.rv = rv;
-      li.textContent = `Shiny #${shinies} - Pokédex #${pokemonNumber} — SPA: ${spa.toFixed(2)}% — RV: ${rv.toFixed(3)}`;
+  // Highlight rarest
+  if(rv > maxRV) {
+    maxRV = rv;
+    shinyLog.querySelectorAll(".rarest").forEach(el => el.classList.remove("rarest"));
+    li.classList.add("rarest");
+  }
 
-      // Update rarest highlight
-      if (rv > maxRV) {
-        maxRV = rv;
-        shinyLog.querySelectorAll(".rarest").forEach(el => el.classList.remove("rarest"));
-        li.classList.add("rarest");
-      }
+  shinyLog.appendChild(li);
+  shinyLog.scrollTop = shinyLog.scrollHeight;
 
+  if(save) saveToLocalStorage();
+}
+
+function clickAttempt() {
+  attempts++;
+  spaAttempts++;
+
+  const chance = getCurrentChance();
+  if(Math.random() < chance) {
+    shinies++;
+    const spaProb = calculateSPA(); // 0–1
+    const rv = Math.pow(spaProb, 2); // SPA-dependent RV
+    const pokemonNumber = getRandomPokedexNumber();
+
+    log.textContent = `✨ Shiny Found! Total Shinies: ${shinies} ✨`;
+    flashScreen();
+    addShinyToLog(pokemonNumber, spaProb, rv);
+
+    spaAttempts = 0; // Reset SPA after shiny
+  }
+
+  updateStats();
+  saveToLocalStorage();
+}
+
+manualBtn.addEventListener("click", clickAttempt);
+
+autoBtn.addEventListener("click", () => {
+  if(!autoClicking) {
+    autoClicking = true;
+    autoBtn.textContent = "Stop Auto-Click (100/sec)";
+    autoClickInterval = setInterval(clickAttempt, 10);
+  } else {
+    autoClicking = false;
+    autoBtn.textContent = "Start Auto-Click (100/sec)";
+    clearInterval(autoClickInterval);
+  }
+});
+
+sortSPAButton.addEventListener("click", () => {
+  const items = Array.from(shinyLog.querySelectorAll("li"));
+  items.sort((a,b)=>parseFloat(b.dataset.spa)-parseFloat(a.dataset.spa));
+  shinyLog.innerHTML="";
+  items.forEach(item => shinyLog.appendChild(item));
+});
+
+resetButton.addEventListener("click", () => {
+  if(confirm("Reset all progress?")) {
+    attempts=0; shinies=0; spaAttempts=0; maxRV=0;
+    shinyLog.innerHTML="";
+    log.textContent="Click 'Manual Click' or use Auto-Click!";
+    updateStats();
+    localStorage.clear();
+  }
+});
+
+// Save to localStorage
+function saveToLocalStorage() {
+  const logData = Array.from(shinyLog.querySelectorAll("li")).map(li => ({
+    text: li.textContent,
+    spa: li.dataset.spa,
+    rv: li.dataset.rv,
+    rare: li.classList.contains("rarest")
+  }));
+  localStorage.setItem("shinyLog", JSON.stringify(logData));
+  localStorage.setItem("shinyStats", JSON.stringify({attempts, shinies, spaAttempts, maxRV}));
+}
+
+// Load from localStorage
+function loadFromLocalStorage() {
+  const statsData = JSON.parse(localStorage.getItem("shinyStats"));
+  const logData = JSON.parse(localStorage.getItem("shinyLog"));
+
+  if(statsData) {
+    attempts=statsData.attempts;
+    shinies=statsData.shinies;
+    spaAttempts=statsData.spaAttempts;
+    maxRV=statsData.maxRV;
+    updateStats();
+  }
+
+  if(logData) {
+    logData.forEach(item=>{
+      const li=document.createElement("li");
+      li.textContent=item.text;
+      li.dataset.spa=item.spa;
+      li.dataset.rv=item.rv;
+      if(item.rare) li.classList.add("rarest");
       shinyLog.appendChild(li);
-      shinyLog.scrollTop = shinyLog.scrollHeight;
+    });
+  }
+}
 
-      if(save) saveToLocalStorage();
-    }
+// Export log to JSON
+exportButton.addEventListener("click", () => {
+  const data = {
+    stats:{attempts, shinies, spaAttempts, maxRV},
+    log:Array.from(shinyLog.querySelectorAll("li")).map(li=>({
+      text: li.textContent,
+      spa: li.dataset.spa,
+      rv: li.dataset.rv,
+      rare: li.classList.contains("rarest")
+    }))
+  };
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;
+  a.download="shiny_log.json";
+  a.click();
+  URL.revokeObjectURL(url);
+});
 
-    function clickAttempt() {
-      attempts++;
-      spaAttempts++;
-
-      const chance = getCurrentChance();
-      if (Math.random() < chance) {
-        shinies++;
-        const spa = calculateSPA()*100;
-        const pokemonNumber = getRandomPokedexNumber();
-        const rv = Math.random();
-
-        log.textContent = `✨ Shiny Found! Total Shinies: ${shinies} ✨`;
-        flashScreen();
-        addShinyToLog(pokemonNumber, spa, rv);
-
-        spaAttempts = 0;
-      }
-
+// Import log from JSON
+importButton.addEventListener("click",()=>importFile.click());
+importFile.addEventListener("change",(e)=>{
+  const file=e.target.files[0];
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=function(ev){
+    try {
+      const data=JSON.parse(ev.target.result);
+      attempts=data.stats.attempts||0;
+      shinies=data.stats.shinies||0;
+      spaAttempts=data.stats.spaAttempts||0;
+      maxRV=data.stats.maxRV||0;
+      shinyLog.innerHTML="";
+      data.log.forEach(item=>{
+        const li=document.createElement("li");
+        li.textContent=item.text;
+        li.dataset.spa=item.spa;
+        li.dataset.rv=item.rv;
+        if(item.rare) li.classList.add("rarest");
+        shinyLog.appendChild(li);
+      });
       updateStats();
       saveToLocalStorage();
-    }
+    } catch(err){alert("Invalid file");}
+  };
+  reader.readAsText(file);
+});
 
-    manualBtn.addEventListener("click", clickAttempt);
-
-    autoBtn.addEventListener("click", () => {
-      if (!autoClicking) {
-        autoClicking = true;
-        autoBtn.textContent = "Stop Auto-Click (100/sec)";
-        autoClickInterval = setInterval(clickAttempt, 10);
-      } else {
-        autoClicking = false;
-        autoBtn.textContent = "Start Auto-Click (100/sec)";
-        clearInterval(autoClickInterval);
-      }
-    });
-
-    sortSPAButton.addEventListener("click", () => {
-      const items = Array.from(shinyLog.querySelectorAll("li"));
-      items.sort((a, b) => parseFloat(b.dataset.spa) - parseFloat(a.dataset.spa));
-      shinyLog.innerHTML = "";
-      items.forEach(item => shinyLog.appendChild(item));
-    });
-
-    resetButton.addEventListener("click", () => {
-      if(confirm("Are you sure you want to reset all progress?")) {
-        attempts = 0;
-        shinies = 0;
-        spaAttempts = 0;
-        maxRV = 0;
-        shinyLog.innerHTML = "";
-        updateStats();
-        log.textContent = "Click 'Manual Click' or use Auto-Click!";
-        localStorage.clear();
-      }
-    });
-
-    // Save to localStorage
-    function saveToLocalStorage() {
-      const logData = Array.from(shinyLog.querySelectorAll("li")).map(li => ({
-        text: li.textContent,
-        spa: li.dataset.spa,
-        rv: li.dataset.rv,
-        rare: li.classList.contains("rarest")
-      }));
-      localStorage.setItem("shinyLog", JSON.stringify(logData));
-      localStorage.setItem("shinyStats", JSON.stringify({attempts, shinies, spaAttempts, maxRV}));
-    }
-
-    // Load from localStorage
-    function loadFromLocalStorage() {
-      const statsData = JSON.parse(localStorage.getItem("shinyStats"));
-      const logData = JSON.parse(localStorage.getItem("shinyLog"));
-
-      if(statsData) {
-        attempts = statsData.attempts;
-        shinies = statsData.shinies;
-        spaAttempts = statsData.spaAttempts;
-        maxRV = statsData.maxRV;
-        updateStats();
-      }
-
-      if(logData) {
-        logData.forEach(item => {
-          const li = document.createElement("li");
-          li.textContent = item.text;
-          li.dataset.spa = item.spa;
-          li.dataset.rv = item.rv;
-          if(item.rare) li.classList.add("rarest");
-          shinyLog.appendChild(li);
-        });
-      }
-    }
-
-    // Initialize
-    loadFromLocalStorage();
-  </script>
+loadFromLocalStorage();
+</script>
 
 </body>
 </html>
