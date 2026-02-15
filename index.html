@@ -20,18 +20,18 @@
       cursor: pointer;
     }
 
-    #stats, #log, #prob, #shinyList, #modifiers {
+    #stats, #log, #prob, #shinyLog, #modifiers {
       margin-top: 15px;
       font-size: 16px;
     }
 
-    #shinyList {
-      max-height: 250px;
+    #shinyLog {
+      max-height: 300px;
       overflow-y: auto;
       background: #fff;
       padding: 10px;
       border: 1px solid #ccc;
-      width: 550px;
+      width: 600px;
     }
 
     #modifiers label {
@@ -52,6 +52,27 @@
       background: black;
       color: white;
       font-weight: bold;
+    }
+
+    .spa-bar-container {
+      display: inline-block;
+      width: 120px;
+      height: 10px;
+      background: #ccc;
+      margin-left: 10px;
+      vertical-align: middle;
+      border-radius: 4px;
+    }
+
+    .spa-bar {
+      height: 100%;
+      background: gold;
+      border-radius: 4px;
+    }
+
+    #shinyLog img {
+      vertical-align: middle;
+      margin-right: 8px;
     }
   </style>
 </head>
@@ -83,6 +104,8 @@
     Chance to have found at least 1 shiny: 0%
   </div>
 
+  <ul id="shinyLog"></ul>
+
 <script>
 const baseChance = 1 / 8192;
 let attempts = 0;
@@ -104,6 +127,14 @@ const resetButton = document.getElementById("reset");
 const exportButton = document.getElementById("exportLog");
 const importButton = document.getElementById("importLog");
 const importFile = document.getElementById("importFile");
+
+// Preload all shiny images to avoid lag
+const preloadedImages = [];
+for (let i = 1; i <= 1025; i++) {
+  const img = new Image();
+  img.src = `Shiny/${i}.png`;
+  preloadedImages.push(img);
+}
 
 function flashScreen() {
   document.body.classList.add("flash");
@@ -137,14 +168,34 @@ function updateStats() {
 }
 
 function getRandomPokedexNumber() {
-  return Math.floor(Math.random() * 1025) + 1; // 1–1025
+  return Math.floor(Math.random() * 1025) + 1;
 }
 
 function addShinyToLog(pokemonNumber, spa, rv, save=true) {
   const li = document.createElement("li");
   li.dataset.spa = spa;
   li.dataset.rv = rv;
-  li.textContent = `Shiny #${shinies} - Pokédex #${pokemonNumber} — SPA: ${(spa*100).toFixed(2)}% — RV: ${rv.toFixed(3)}`;
+
+  // Shiny image
+  const img = document.createElement("img");
+  img.src = `Shiny/${pokemonNumber}.png`;
+  img.width = 48;
+  img.height = 48;
+  li.appendChild(img);
+
+  // Text
+  li.appendChild(document.createTextNode(
+    `Shiny #${shinies} - Pokédex #${pokemonNumber} — SPA: ${(spa*100).toFixed(2)}% — RV: ${rv.toFixed(3)}`
+  ));
+
+  // SPA bar
+  const barContainer = document.createElement("div");
+  barContainer.className = "spa-bar-container";
+  const bar = document.createElement("div");
+  bar.className = "spa-bar";
+  bar.style.width = `${Math.min(spa*100,100)}%`;
+  barContainer.appendChild(bar);
+  li.appendChild(barContainer);
 
   // Highlight rarest
   if(rv > maxRV) {
@@ -166,15 +217,15 @@ function clickAttempt() {
   const chance = getCurrentChance();
   if(Math.random() < chance) {
     shinies++;
-    const spaProb = calculateSPA(); // 0–1
-    const rv = Math.pow(spaProb, 2); // SPA-dependent RV
+    const spaProb = calculateSPA();
+    const rv = Math.pow(spaProb, 2);
     const pokemonNumber = getRandomPokedexNumber();
 
     log.textContent = `✨ Shiny Found! Total Shinies: ${shinies} ✨`;
     flashScreen();
     addShinyToLog(pokemonNumber, spaProb, rv);
 
-    spaAttempts = 0; // Reset SPA after shiny
+    spaAttempts = 0;
   }
 
   updateStats();
@@ -212,7 +263,7 @@ resetButton.addEventListener("click", () => {
   }
 });
 
-// Save to localStorage
+// Save & load from localStorage
 function saveToLocalStorage() {
   const logData = Array.from(shinyLog.querySelectorAll("li")).map(li => ({
     text: li.textContent,
@@ -224,7 +275,6 @@ function saveToLocalStorage() {
   localStorage.setItem("shinyStats", JSON.stringify({attempts, shinies, spaAttempts, maxRV}));
 }
 
-// Load from localStorage
 function loadFromLocalStorage() {
   const statsData = JSON.parse(localStorage.getItem("shinyStats"));
   const logData = JSON.parse(localStorage.getItem("shinyLog"));
@@ -249,7 +299,7 @@ function loadFromLocalStorage() {
   }
 }
 
-// Export log to JSON
+// Export & Import log
 exportButton.addEventListener("click", () => {
   const data = {
     stats:{attempts, shinies, spaAttempts, maxRV},
@@ -269,7 +319,6 @@ exportButton.addEventListener("click", () => {
   URL.revokeObjectURL(url);
 });
 
-// Import log from JSON
 importButton.addEventListener("click",()=>importFile.click());
 importFile.addEventListener("change",(e)=>{
   const file=e.target.files[0];
@@ -296,10 +345,11 @@ importFile.addEventListener("change",(e)=>{
     } catch(err){alert("Invalid file");}
   };
   reader.readAsText(file);
-});
+}
+
+);
 
 loadFromLocalStorage();
 </script>
-
 </body>
 </html>
