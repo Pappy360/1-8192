@@ -20,7 +20,7 @@
       cursor: pointer;
     }
 
-    #stats, #log, #shinyList {
+    #stats, #log, #prob, #shinyList {
       margin-top: 15px;
       font-size: 16px;
     }
@@ -47,6 +47,10 @@
     Shinies Found: 0
   </div>
 
+  <div id="prob">
+    Chance to have found at least 1 shiny: 0%
+  </div>
+
   <div id="shinyList">
     <strong>Shiny Log:</strong>
     <ul id="shinyLog"></ul>
@@ -63,9 +67,17 @@
     const log = document.getElementById("log");
     const stats = document.getElementById("stats");
     const shinyLog = document.getElementById("shinyLog");
+    const prob = document.getElementById("prob");
     const manualBtn = document.getElementById("manualClick");
     const autoBtn = document.getElementById("autoClick");
 
+    // Function to update probability
+    function updateProbability() {
+      const chance = 1 - Math.pow(1 - shinyChance, attempts);
+      prob.textContent = `Chance to have found at least 1 shiny: ${(chance*100).toFixed(2)}%`;
+    }
+
+    // Function for a single click
     function clickAttempt() {
       attempts++;
       if (Math.random() < shinyChance) {
@@ -78,6 +90,7 @@
         shinyLog.scrollTop = shinyLog.scrollHeight;
       }
       stats.innerHTML = `Attempts: ${attempts}<br>Shinies Found: ${shinies}`;
+      updateProbability();
     }
 
     manualBtn.addEventListener("click", clickAttempt);
@@ -93,6 +106,7 @@
         clearInterval(autoClickInterval);
       }
     });
+
   </script>
 
 </body>
